@@ -1,0 +1,8 @@
+download seismic data 
+by ShiJie Hao
+
+
+---------dwseis_conti.py < sta.lst config
+download continuous data ,time range is set up in code
+station list is set up in sta.lst
+meta information is set up in config
