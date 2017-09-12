@@ -8,7 +8,7 @@ def trans(sacfile):
     trans
     write staname.BH?
     """
-    p = Popen(['sac'], stdin=PIPE, stdout=PIPE)
+    p = Popen(['sac'], stdin=PIPE, stdout=PIPE,stderr=PIPE)
     temp = sacfile.split('.')
     net,sta,code,ch = temp[6],temp[7],temp[8],temp[9]
     respfile = '.'.join(['RESP',net,sta,code,ch])
@@ -20,7 +20,8 @@ def trans(sacfile):
     s += "transfer from evalresp fname %s to none freq %f %f %f %f\n" % (respfile,f[0],f[1],    f[2],f[3])
     s += "w %s\n" % outfile
     s += "q\n"
-    p.communicate(s.encode())
+    out,err = p.communicate(s.encode())
+    print(err.decode('utf-8'),out.decode('utf-8'))
 
 def get_three(file_list):
     result = []
