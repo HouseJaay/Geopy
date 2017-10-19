@@ -5,7 +5,7 @@ import smtplib
 from time import sleep
 import random
 import sys
-import haotool as ht
+import Geopy.metadata as mt
 
 sys.path.insert(0,'/home/hao_shijie/work/two_station')
 
@@ -67,9 +67,9 @@ dist_max = 9000
 mag_min = 5.8
 
 if __name__=="__main__":
-    evt_full = ht.read_event('evt_2004_2016')
-    sta = ht.read_station('station_us')
-    pair = ht.mk_sta_pairs(sta)
+    evt_full = mt.read_event('evt_2004_2016')
+    sta = mt.read_station('station_us')
+    pair = mt.mk_sta_pairs(sta)
     pair.loc[:,'event'] = pair.apply(cs.do_check,axis='columns',
     args=(evt_full,dep_max,dist_min,dist_max,mag_min))
     pair_temp = pair[pair['event']>5]
