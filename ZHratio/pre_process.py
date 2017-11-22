@@ -21,6 +21,7 @@ def trans(filename,respname,writename,f,d):
 
 def do_trans(sacdir,respdir,writedir):
     saclist = glob(sacdir+'*.SAC')
+    print('processing %s' %sacdir)
     for sacpath in saclist:
         sacfile = sacpath.split('/')[-1]
         sta,ch = sacfile.split('.')[1],sacfile.split('.')[-2]
@@ -55,6 +56,9 @@ def do_rotate(peddir):
     
 if __name__ == '__main__':
     root = '/home/haosj/data/tibet/'
-    do_trans(root+'ordos/15639/',root+'RESP/RESP/',root+'ordos/ped/')
-    do_rotate(root+'ordos/ped/')
-
+    dirs = os.listdir(root+'ordos/')
+    for sta in dirs:
+        writedir = root + 'ped/' + sta + '/'
+        os.mkdir(writedir)
+        do_trans(root+'ordos/'+sta+'/',root+'RESP/RESP/',writedir)
+        do_rotate(writedir)
