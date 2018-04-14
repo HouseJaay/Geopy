@@ -1,10 +1,9 @@
-import obspy
-from obspy.core import UTCDateTime
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-import pandas
 import distaz
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas
+from obspy.core import UTCDateTime
+
 
 # cut every seismogram in a stream
 def cut(st, start, end):

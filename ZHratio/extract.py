@@ -1,35 +1,36 @@
 from scipy import signal
 from scipy.fftpack import hilbert
 import obspy
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import numpy as np
 from Geopy import metadata as mt
 from Geopy import cps
 from obspy.signal.filter import envelope
 import pandas
+import os
 
-def plot_progress(zdata,hdata,Z,Z_env,H,H_env,freqs,Win):
-    fig,axes = plt.subplots(len(range(0,len(freqs),2))+1,sharex=True)
-    zcolor,hcolor = 'red','blue'
-    axes[0].plot(zdata,color=zcolor)
-    axes[0].plot(hdata,color=hcolor)
-    for i in range(0,len(freqs),2):
+def plot_progress(zdata, hdata, Z, Z_env, H, H_env, freqs, Win):
+    fig, axes = plt.subplots(len(range(0, len(freqs), 2))+1, sharex=True)
+    zcolor, hcolor = 'red', 'blue'
+    axes[0].plot(zdata, color=zcolor)
+    axes[0].plot(hdata, color=hcolor)
+    for i in range(0, len(freqs), 2):
         j = i//2+1
-        axes[j].plot(Z[i],color=zcolor)
-        axes[j].plot(Z_env[i],color=zcolor)
-        axes[j].plot(H[i],color=hcolor)
-        axes[j].plot(H_env[i],color=hcolor)
+        axes[j].plot(Z[i], color=zcolor)
+        axes[j].plot(Z_env[i], color=zcolor)
+        axes[j].plot(H[i], color=hcolor)
+        axes[j].plot(H_env[i], color=hcolor)
         axes[j].set_ylabel('freq_'+str(freqs[i]))
         axes[j].plot(Win[i]*Z[i].max())
     plt.show()
 
-def group_vel_win(filename,stats,freqs,n):
+def group_vel_win(filename, stats, freqs, n):
     dist = stats.sac['dist']
     delta = stats.delta
     timediff = stats.sac['b'] - stats.sac['o']
     npts = stats.npts
-    gvdisp = cps.do_mft(filename,'R',dist)
-    gvinterp = np.interp(freqs,gvdisp[0],gvdisp[1])
+    gvdisp = cps.do_mft(filename, 'R', dist)
+    gvinterp = np.interp(freqs, gvdisp[0], gvdisp[1])
     pers = 1/freqs
     left = (dist/(gvinterp+n) - timediff)/delta
     left = left.astype('int')
@@ -37,15 +38,15 @@ def group_vel_win(filename,stats,freqs,n):
     right = right.astype('int')
     def cut(bound):
         win = np.zeros(npts)
-        l = 0 if bound[0]<0 else bound[0]
-        r = npts-1 if bound[1]>npts-1 else bound[1]
+        l = 0 if bound[0] < 0 else bound[0]
+        r = npts-1 if bound[1] > npts-1 else bound[1]
         win[l:r] = 1
         return win
-    return list(map(cut,zip(left,right)))
+    return list(map(cut, zip(left, right)))
 
 def sel_evt(st):
     def helper(tr):
-        if tr.stats.sac['mag'] > 5.0 and tr.stats.sac['evdp'] <= 40 and\
+        if tr.stats.sac['mag'] > 5 and tr.stats.sac['evdp'] <= 40 and\
         tr.stats.sac['dist'] > 1500 and tr.stats.sac['dist'] < 8000:
             start = tr.stats.starttime
             return "X2.%s.%d.%03d.%02d.%02d.%02d.00" %(
@@ -108,20 +109,35 @@ threshold=0.8):
     return np.array(list(map(lambda x:x[0] if x[1]>threshold else None,
     zip(ratio,cor_eff))),dtype=np.float)
 
-def do_single_sta(sta_dir):
-    freqs = np.arange(0.02,0.11,0.01)
+def do_single_sta(sta_dir,freqs):
     st = obspy.read(sta_dir + '*.Z',headonly=True)
     commons = sel_evt(st)
     print(len(commons))
     baz,results = [],[]
     for common in commons:
         fname = sta_dir + common
-        temp = cal_zhratio(fname+'.Z',fname+'.R',freqs,plot=0,threshold=0.8)
+        try:
+            temp = cal_zhratio(fname+'.Z',fname+'.R',freqs,plot=0,threshold=0.8)
+        except Exception as e:
+            print(fname+':')
+            print(e)
+            temp = False
         if isinstance(temp,np.ndarray):
             results.append(temp)
-            st = obspy.read(fname+'.Z')
+            st = obspy.read(fname+'.Z',headonly=True)
             baz.append(st[0].stats.sac['baz'])
-    return np.array(results),np.array(baz)
+    ratio_baz = sorted(zip(results,baz), key=lambda x:x[1], reverse=True)
+    deg_bin = 30
+    cent_bazs,mean_results,std_results = [],[],[]
+    for freq_rbound in range(deg_bin,360,deg_bin):
+        cur_results = []
+        while ratio_baz and ratio_baz[-1][1] < freq_rbound:
+            cur_results.append(ratio_baz.pop()[0])
+        if len(cur_results) > 1:
+            cent_bazs.append(freq_rbound - deg_bin//2)
+            mean_results.append(np.nanmean(cur_results, axis=0))
+            std_results.append(np.nanstd(cur_results, axis=0))
+    return results,baz,cent_bazs,mean_results,std_results
 if __name__ == '__main__':
     if False: # plot synthetic test
         dists = ['20','30','40','50','60','70','80']
@@ -143,9 +159,9 @@ if __name__ == '__main__':
             ax.set_xlabel('frequency(Hz)')
         plt.show()
         #plt.savefig('synthetic.png')
-    if True:
+    if False:
         freqs = np.arange(0.01,0.21,0.01)
-        cal_zhratio('g30.z','g30.r',freqs,plot=2)
+        cal_zhratio('g30_cut.z','g30_cut.r',freqs,plot=2)
     if False:
         root = '/home/haosj/data/tibet/'
         sta = pandas.read_table(root+'metadata/ordos_sta.lst',
@@ -180,5 +196,29 @@ if __name__ == '__main__':
         lat = np.array(sta['lat'])
         lon = np.array(sta['lon'])
         zh = Mean[:,5]
-    if False:
-        results,baz=do_single_sta('/home/haosj/data/tibet/ped/64016/')
+    if True:
+        freqs = np.arange(0.02,0.11,0.01)
+        out = '/home/haosj/seis/zhratio/anis/'
+        #stas = os.listdir('/home/haosj/data/tibet/ped/')
+        stas = ['64046','64050','64053']
+        for sta in stas:
+            results,baz,cent_bazs,results_mean,results_std = do_single_sta('/home/haosj/data/tibet/ped/%s/' %sta,freqs)
+            mean,std = np.array(results_mean),np.array(results_std)
+            results = np.array(results)
+            outdir = out+sta+'/'
+            os.makedirs(outdir,exist_ok=True)
+            for i,freq in enumerate(freqs):    
+                fig, ax = plt.subplots(1)
+                ax.plot(cent_bazs, mean[:,i], '.')
+                ax.errorbar(cent_bazs, mean[:,i], yerr=std[:,i], fmt="none")
+                ax.set_xlim(0,360)
+                fmean = 'mean_' + str(freq) + '.png'
+                plt.savefig(outdir+fmean)
+
+                fig, ax = plt.subplots(1)
+                ax.plot(baz,results[:,i],'.')
+                ax.set_xlim(0,360)
+                fscat = 'all_' + str(freq) +'.png'
+                plt.savefig(outdir+fscat)
+
+

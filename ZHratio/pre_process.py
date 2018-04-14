@@ -51,8 +51,6 @@ def do_rotate(peddir):
             #print(r)
         else:
             print('file error %s' %zfile)
-
-
     
 if __name__ == '__main__':
     root = '/home/haosj/data/tibet/'
