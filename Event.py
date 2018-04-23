@@ -55,6 +55,9 @@ class Events(object):
     def __iter__(self):
         return iter(self.evts.values())
 
+    def __len__(self):
+        return len(self.evts)
+
 
 
 if __name__ == '__main__':

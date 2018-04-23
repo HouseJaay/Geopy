@@ -11,53 +11,53 @@ import obspy.signal.filter
 VRANGE = (3,5)
 CH = 'BHZ'
 
+
 def pick_global(array):
     arr_env = obspy.signal.filter.envelope(array)
     return arr_env.argmax()
 
+
 def window(array,n0,width):
     l = n0 - width
     r = n0 + width
-    if(l<0): l=0
-    if(r>=len(array)): r=len(array)-1
+    if l<0: l=0
+    if r>=len(array): r=len(array)-1
     w = np.zeros(len(array))
     w[l:r] = 1
     array = w*array
     return array
+
 
 def norm(array):
     ma,mi = array.max(),array.min()
     m = max(abs(ma),abs(mi))
     return array/m
 
-def pick(cor,uini,u):
+
+def pick(cor, uini, u):
     for i in range(len(u)):
-        if(u[i]<=uini):
-            j=i
+        if u[i] <= uini:
+            j = i
             break
-    if(j==0 or j==(len(u)-1)):
+    if j==0 or j==(len(u)-1):
         return -1
-    if(cor[j+1]>cor[j]):
-        while(j<(len(u)-1) and cor[j+1]>cor[j]):
+    if cor[j+1]>cor[j]:
+        while j<(len(u)-1) and cor[j+1]>cor[j]:
             j+=1
         i=j
-    elif(cor[j-1]>cor[j]):
-        while(j>0 and cor[j-1]>cor[j]):
+    elif cor[j-1]>cor[j]:
+        while j>0 and cor[j-1]>cor[j]:
             j-=1
         i=j
     return u[i]    
+
 
 def onclick(event):
     global click_x,click_y
     click_x,click_y=event.xdata,event.ydata
 
-def two_station(st ,dist,vrange,prange,file_out):
-    """try:
-        st = obspy.read(file1)  
-        st += obspy.read(file2)
-    except FileNotFoundError:
-        print("file doesn't exist:",file1,file2)
-        return"""
+
+def two_station(st ,dist,vrange,prange):
     delta = st[0].stats.delta
     npts = st[0].stats.npts
 
@@ -119,42 +119,52 @@ def two_station(st ,dist,vrange,prange,file_out):
         cor = cor[mask]
         cor = norm(cor)
         COR[row] = cor
-        row+=1
+        row += 1
 # pick
     plt.show()
 
     fig,ax = plt.subplots()
     cf = ax.contourf(P,V,COR)
     fig.colorbar(cf)
-    fig.canvas.mpl_connect('button_press_event', onclick)
     plt.show()
-    hand = input('input d: do not keep  this dispersion file\n')
-    if(hand == 'd'):
-        return
-    else:
-        pass
-    pini = int(click_x)
-    uini = pick(COR[pini-prange[0]], click_y, v)
-    f = open(file_out,'w')
-    f.write("%d %f\n" % (pini,uini))
+    result = np.empty(prange[1]-prange[0])
+    result[:] = np.NaN
+    pini = 60
+    uini = pick(COR[pini-prange[0]], 4.0, v)
+
+    result[pini-prange[0]] = uini
     utemp = uini
-    for period in range(pini+1, prange[1] ,1):
+    for period in range(pini+1, prange[1], 1):
         utemp = pick(COR[period-prange[0]], utemp, v)
         if(utemp > 0):
-            f.write("%d %f\n" % (period,utemp))
+            result[period-prange[0]] = utemp
         else:
             break
     utemp=uini
     for period in range(pini-1,prange[0]-1,-1):
         utemp = pick(COR[period-prange[0]], utemp, v)
         if(utemp > 0):
-            f.write("%d %f\n" % (period,utemp))
+            result[period-prange[0]] = utemp
         else:
             break
-    f.close()
+    return result
+
 
 def do_ts(Disp,PRANGE=(20,60)):
     for index,e in Disp.evt.iterrows():
         dist = abs(e['dist'][0]-e['dist'][1])
         two_station(e['data1'],e['data2'],dist,VRANGE,PRANGE,e['disp'])
 
+
+if __name__ == '__main__':
+    testdir = '/home/haosj/work/Geopy/testdata/twostation/'
+    st = obspy.read(testdir + '*.z')
+    print(st)
+    result = two_station(st, 1111.95, (2, 6), (10, 100))
+    forward = np.loadtxt(testdir + 'forward').transpose()
+    fig, ax = plt.subplots()
+    ax.set_xlim(10, 100)
+    ax.set_ylim(3, 4)
+    ax.plot(np.arange(10, 100), result)
+    ax.plot(forward[0], forward[1])
+    plt.show()
