@@ -3,9 +3,8 @@
 import obspy
 from scipy import signal
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import numpy as np
-import pandas
-from obspy.core import UTCDateTime
 import obspy.signal.filter
 
 VRANGE = (3,5)
@@ -79,12 +78,12 @@ def two_station(st ,dist,vrange,prange):
         tr2 = st[0].copy()
 # plot prepare
     rows = int((prange[1]-prange[0])/10)
-    fig,axes = plt.subplots(nrows = rows+1, ncols=2) 
+    fig, axes = plt.subplots(nrows=rows+1, ncols=2)
     ax_t = np.arange(len(tr1.data))*delta
-    axes[0,0].plot(ax_t,tr1.data,'b-')
-    axes[0,0].set_title(tr1.stats.station)
-    axes[0,1].plot(ax_t,tr2.data,'b-')
-    axes[0,1].set_title(tr2.stats.station)
+    axes[0, 0].plot(ax_t, tr1.data, 'b-')
+    axes[0, 0].set_title(tr1.stats.station)
+    axes[0, 1].plot(ax_t, tr2.data, 'b-')
+    axes[0, 1].set_title(tr2.stats.station)
 
     row=0
     for period in range(prange[0],prange[1]):
