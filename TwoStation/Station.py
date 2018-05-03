@@ -2,6 +2,7 @@ from distaz import distaz
 from Geopy.Event import Events
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from Geopy.TwoStation import two_station as ts
 from Geopy import cps
 import obspy
@@ -86,13 +87,22 @@ class Pair(object):
                 continue
             print(st)
             print(snr(st[0]), snr(st[1]))
-            out_path = '/home/haosj/data/neTibet/man_result/'
+            out_path = '/home/haosj/data/neTibet/result/'
             out_path += self.sta1 + '_' + self.sta2 + '/'
             if not os.path.exists(out_path):
                 os.mkdir(out_path)
             out_path += str(evt.gettime())
-            phvel = ts.two_station(st, self.staDist, (2, 6), self.PRANGE)
-            hand = self._selectvelocity(phvel)
+            # prepare plot
+            fig = plt.gcf()
+            fig.set_size_inches(15, 5)
+            nrows = 1 + (self.PRANGE[1] - self.PRANGE[0]) // 10
+            gs = gridspec.GridSpec(nrows, 21)
+            axes = []
+            for i in range(nrows):
+                axes.append([plt.subplot(gs[i, :7]), plt.subplot(gs[i, 7:14])])
+            ax2 = plt.subplot(gs[:, 15:])
+            phvel = ts.two_station(st, self.staDist, (2.9, 4.3), self.PRANGE, (axes, ax2))
+            hand = self._selectvelocity(phvel, ax2, manual=False)
             if hand:
                 self.disp.append(phvel)
                 np.savetxt(out_path, phvel)
@@ -100,13 +110,13 @@ class Pair(object):
         self.disp = np.array(self.disp)
         self.plot()
 
-    def _selectvelocity(self, velocity, manual=True):
+    def _selectvelocity(self, velocity, ax, manual=True):
         """
         select phase velocity,set unwanted data to np.NaN
         :param velocity: ndarray,phase velocity
         :return: if want to keep this data return True else False
         """
-        th1, th2 = 0.15, 0.01
+        th1, th2 = 0.15, 0.008
         th_minlen = 20
 
         mask = (abs(velocity - self.refdisp)/self.refdisp < th1)
@@ -122,7 +132,6 @@ class Pair(object):
             if i-j < th_minlen:
                 mask[j:i] = False
         if manual:  # if manual==True, manually selected data
-            fig, ax = plt.subplots()
             plotdispax(velocity, np.arange(*self.PRANGE), ax)
             plt.show(block=False)
             hand = input('>')
@@ -136,7 +145,7 @@ class Pair(object):
                 start, end = int(temp[1]) - pmin, int(temp[2]) - pmin
                 mask = np.array([False for _ in range(*self.PRANGE)], dtype='bool')
                 mask[start:end] = True
-            plt.close()
+        plt.close()
         if all(~mask):
             return False
         for i in range(len(mask)):
@@ -163,9 +172,10 @@ class Pair(object):
         ax.set_ylabel('phase velocity(km/s)')
         ax.set_xlim(*self.PRANGE)
         ax.set_ylim(2.9, 4.2)
-        plt.plot(np.arange(*self.PRANGE), self.refdisp, color='red')
         for i in range(len(self.disp)):
             plt.plot(np.arange(*self.PRANGE), self.disp[i], color='grey')
+        plt.plot(np.arange(*self.PRANGE), self.refdisp, color='blue')
+        plt.plot(np.arange(*self.PRANGE), np.nanmean(self.disp, axis=0), color='red')
         plt.show()
 
 
@@ -258,7 +268,7 @@ def plotdispax(disp, peroid, ax):
 if __name__ == '__main__':
     directory = '/home/haosj/data/neTibet/data/'
     evts = Events()
-    evts.addfromdir(directory, '2013*')
+    evts.addfromdir(directory, '201*')
     # pair = Pair('15639', 38.681, 104.352, '61061', 36.526, 108.772)
     pairs = Pairs('/home/haosj/data/neTibet/sta_36_south.lst', evts)
-    pair = pairs.getpair('51501', '51504')
+    pair = pairs.getpair('51535', '62315')

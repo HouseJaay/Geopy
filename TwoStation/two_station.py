@@ -1,9 +1,5 @@
-#! /usr/bin/env python
-
 import obspy
 from scipy import signal
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import numpy as np
 import obspy.signal.filter
 
@@ -56,7 +52,9 @@ def onclick(event):
     click_x,click_y=event.xdata,event.ydata
 
 
-def two_station(st ,dist,vrange,prange):
+def two_station(st ,dist, vrange, prange, plotarg):
+    axes,ax2 = plotarg[0], plotarg[1]
+
     delta = st[0].stats.delta
     npts = st[0].stats.npts
 
@@ -70,23 +68,26 @@ def two_station(st ,dist,vrange,prange):
     V,P = np.meshgrid(v,p)
     
 # sequence
-    if(st[0].stats.sac.dist > st[1].stats.sac.dist):
+    if st[0].stats.sac.dist > st[1].stats.sac.dist:
         tr1 = st[0].copy()
         tr2 = st[1].copy()
     else:
         tr1 = st[1].copy()
         tr2 = st[0].copy()
 # plot prepare
-    rows = int((prange[1]-prange[0])/10)
-    fig, axes = plt.subplots(nrows=rows+1, ncols=2)
+    nrows = (prange[1] - prange[0]) // 10 + 1
     ax_t = np.arange(len(tr1.data))*delta
-    axes[0, 0].plot(ax_t, tr1.data, 'b-')
-    axes[0, 0].set_title(tr1.stats.station)
-    axes[0, 1].plot(ax_t, tr2.data, 'b-')
-    axes[0, 1].set_title(tr2.stats.station)
+    axes[0][0].plot(ax_t, tr1.data, 'b-')
+    axes[0][0].set_yticklabels([])
+    axes[0][0].set_xticklabels([])
+    axes[0][0].set_title(tr1.stats.station)
+    axes[0][1].plot(ax_t, tr2.data, 'b-')
+    axes[0][1].set_yticklabels([])
+    axes[0][1].set_xticklabels([])
+    axes[0][1].set_title(tr2.stats.station)
 
-    row=0
-    for period in range(prange[0],prange[1]):
+    row = 0
+    for period in range(prange[0], prange[1]):
         b = signal.firwin(1001,[1.0/(period+0.2),1.0/(period-0.2)],window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
 # filter
         array1 = signal.lfilter(b,1,tr1.data)
@@ -97,21 +98,16 @@ def two_station(st ,dist,vrange,prange):
         array2 = norm(array2)
         array2 = signal.detrend(array2)
 # window and plot
-        #a1_temp = np.copy(array1)
-        #a2_temp = np.copy(array2)
-        #width = int(2*period/delta)
-        #t1 = pick_global(array1)
-        #t2 = pick_global(array2)
-        #array1 = window(array1,t1,width)
-        #array2 = window(array2,t2,width)
-        if(row%10==0):
+        if row % 10 == 0:
             nrow = int(row/10)+1
-            #axes[nrow,0].plot(ax_t,a1_temp,'b-')
-            #axes[nrow,1].plot(ax_t,a2_temp,'b-')
-            axes[nrow,0].plot(ax_t,array1,'b-')
-            axes[nrow,1].plot(ax_t,array2,'b-')
-
-# correlate , first input signal has larger epicenter distance
+            axes[nrow][0].plot(ax_t, array1, 'b-')
+            axes[nrow][0].set_yticklabels([])
+            axes[nrow][1].plot(ax_t, array2, 'b-')
+            axes[nrow][1].set_yticklabels([])
+            if nrow < nrows-1:
+                axes[nrow][0].set_xticklabels([])
+                axes[nrow][1].set_xticklabels([])
+        # correlate , first input signal has larger epicenter distance
         corr = signal.correlate(array1,array2,mode='full')
 # data prepare
         cor = corr[int((len_cor+1)/2):len_cor]
@@ -120,12 +116,7 @@ def two_station(st ,dist,vrange,prange):
         COR[row] = cor
         row += 1
 # pick
-    plt.show()
-
-    fig,ax = plt.subplots()
-    cf = ax.contourf(P,V,COR)
-    fig.colorbar(cf)
-    plt.show()
+    ax2.contourf(P, V, COR)
     result = np.empty(prange[1]-prange[0])
     result[:] = np.NaN
     pini = 60
