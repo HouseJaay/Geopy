@@ -7,7 +7,7 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 import obspy.signal.filter
 
-VRANGE = (3,5)
+VRANGE = (3, 5)
 CH = 'BHZ'
 
 

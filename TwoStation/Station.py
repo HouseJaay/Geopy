@@ -86,7 +86,7 @@ class Pair(object):
                 continue
             print(st)
             print(snr(st[0]), snr(st[1]))
-            out_path = '/home/haosj/data/neTibet/result/'
+            out_path = '/home/haosj/data/neTibet/man_result/'
             out_path += self.sta1 + '_' + self.sta2 + '/'
             if not os.path.exists(out_path):
                 os.mkdir(out_path)
@@ -98,15 +98,16 @@ class Pair(object):
                 np.savetxt(out_path, phvel)
                 self.dispfile.append(out_path)
         self.disp = np.array(self.disp)
+        self.plot()
 
-    def _selectvelocity(self, velocity):
+    def _selectvelocity(self, velocity, manual=True):
         """
         select phase velocity,set unwanted data to np.NaN
         :param velocity: ndarray,phase velocity
         :return: if want to keep this data return True else False
         """
         th1, th2 = 0.15, 0.01
-        manual = True
+        th_minlen = 20
 
         mask = (abs(velocity - self.refdisp)/self.refdisp < th1)
         mask = mask & (abs(
@@ -118,7 +119,7 @@ class Pair(object):
             j = i
             while i < len(mask) and mask[i]:
                 i += 1
-            if i-j < 10:
+            if i-j < th_minlen:
                 mask[j:i] = False
         if manual:  # if manual==True, manually selected data
             fig, ax = plt.subplots()
