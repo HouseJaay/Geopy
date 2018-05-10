@@ -12,6 +12,11 @@ import os
 
 
 class Pair(object):
+    """
+    usage:
+        pair.setevents -> pair.do_ts
+        or pair.setevents -> pair.load
+    """
     def __init__(self, sta1, lat1, lon1, sta2, lat2, lon2):
         self.sta1 = sta1
         self.sta2 = sta2
@@ -70,10 +75,20 @@ class Pair(object):
         st[0].stats.starttime = start
         st[1].stats.starttime = start
 
-    def do_ts(self):
+    def do_ts(self, out_path='/home/haosj/data/neTibet/result/'):
         snrthreshold = 5
         self._set_reference_disp()
+        out_path += self.sta1 + '_' + self.sta2 + '/'
+        if not os.path.exists(out_path):
+            os.mkdir(out_path)
+        evt_temp = []
         for evt in self.evts:
+            out_file = out_path + str(evt.gettime())
+            # if os.path.exists(out_file):
+            #     phvel_read = np.loadtxt(out_file)
+            #     self.disp.append(phvel_read)
+            #     print('pass', str(evt.gettime()))
+            #     continue
             st = obspy.read(evt.getfile(self.sta1))
             st += obspy.read(evt.getfile(self.sta2))
             dist = (st[0].stats.sac.dist + st[1].stats.sac.dist) / 2.0
@@ -87,11 +102,6 @@ class Pair(object):
                 continue
             print(st)
             print(snr(st[0]), snr(st[1]))
-            out_path = '/home/haosj/data/neTibet/result/'
-            out_path += self.sta1 + '_' + self.sta2 + '/'
-            if not os.path.exists(out_path):
-                os.mkdir(out_path)
-            out_path += str(evt.gettime())
             # prepare plot
             fig = plt.gcf()
             fig.set_size_inches(15, 5)
@@ -101,15 +111,58 @@ class Pair(object):
             for i in range(nrows):
                 axes.append([plt.subplot(gs[i, :7]), plt.subplot(gs[i, 7:14])])
             ax2 = plt.subplot(gs[:, 15:])
+            # compute and select
             phvel = ts.two_station(st, self.staDist, (2.9, 4.3), self.PRANGE, (axes, ax2))
             hand = self._selectvelocity(phvel, ax2, manual=False)
             if hand:
                 self.disp.append(phvel)
-                np.savetxt(out_path, phvel)
-                self.dispfile.append(out_path)
+                np.savetxt(out_file, phvel)
+                self.dispfile.append(out_file)
+                evt_temp.append(evt)
         self.disp = np.array(self.disp)
-        self.plot()
+        self.evts = evt_temp
+        # self.plot()
 
+    def load(self, directory):
+        """
+        load from disp files
+        :param directory: result directory
+        :return: None
+        """
+        result_path = directory + self.sta1 + '_' + self.sta2 + '/'
+        evt_temp = []
+        for evt in self.evts:
+            target = result_path + str(evt.gettime())
+            if os.path.exists(target):
+                phvel_read = np.loadtxt(target)
+                self.disp.append(phvel_read)
+                evt_temp.append(evt)
+        self.evts = evt_temp
+
+    def two_side_plot(self):
+        """
+        analyze branch phenomenon
+        plot dispersion curve from both side of station pairs in different color
+        :return: None
+        """
+        fig = plt.figure(figsize=(10, 5))
+        ax1 = fig.add_subplot(
+            1, 2, 1, projection=ccrs.AzimuthalEquidistant(*self.latlon1[::-1]))
+        ax2 = fig.add_subplot(1, 2, 2)
+        ax1.set_global()
+        ax1.stock_img()
+        ax1.coastlines()
+        colors = ['red', 'blue']
+        stla = (self.latlon1[0] + self.latlon2[0]) / 2.0
+        for i in range(len(self.evts)):
+            evla = self.evts[i].getlatlon()[0]
+            marker = 0 if stla > evla else 1
+            plotdispax(self.disp[i], np.arange(*self.PRANGE), ax2, color=colors[marker])
+            ax1.plot(
+                *self.evts[i].getlatlon()[::-1], marker='*', markersize=5,
+                transform=ccrs.Geodetic(), color=colors[marker])
+        plt.show()
+        
     def _selectvelocity(self, velocity, ax, manual=True):
         """
         select phase velocity,set unwanted data to np.NaN
@@ -117,7 +170,7 @@ class Pair(object):
         :return: if want to keep this data return True else False
         """
         th1, th2 = 0.15, 0.008
-        th_minlen = 20
+        th_minlen = 50
 
         mask = (abs(velocity - self.refdisp)/self.refdisp < th1)
         mask = mask & (abs(
@@ -167,6 +220,9 @@ class Pair(object):
         self.refdisp = np.interp(range(*self.PRANGE), 1.0/result[0][::-1], result[1][::-1])
 
     def plot(self):
+        if len(self.disp) == 0:
+            print('no result')
+            return
         fig, ax = plt.subplots()
         ax.set_xlabel('period(s)')
         ax.set_ylabel('phase velocity(km/s)')
@@ -256,8 +312,8 @@ def snr(tr):
     return data.max()/data[mid:].mean()
 
 
-def plotdispax(disp, peroid, ax):
-    ax.plot(peroid, disp)
+def plotdispax(disp, peroid, ax, color='black'):
+    ax.plot(peroid, disp, color=color)
     ax.set_xlabel('period(s)')
     ax.set_ylabel('phase velocity')
     ax.set_ylim(2.9, 4.3)
