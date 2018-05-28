@@ -135,7 +135,7 @@ def compute_ray_density(rays, rnodes, radius):
     azs = [[] for _ in range(len(rnodes))]
     for ray in rays:
         az = distaz(*ray[0], *ray[1]).getAz()
-        if az > 180:
+        if az >= 180:
             az -= 180
         for i in range(len(rnodes)):
             inarc, dist = ray_dist_to_node(ray, rnodes[i])
@@ -145,6 +145,33 @@ def compute_ray_density(rays, rnodes, radius):
                 if inarc or (d1 < radius or d2 < radius):
                     rho[i] += 1
                     azs[i].append(az)
+    chi = [0 for _ in range(len(rnodes))]
+    for i in range(len(chi)):
+        hist = [0 for _ in range(10)]
+        for az in azs[i]:
+            hist[az//18] += 1
+        chi[i] = sum(hist) / (10 * max(hist))
+    return rho, chi
+
+
+def define_H(rho, chi, beta, lambda0, thres_chi):
+    """
+    define regularization matrix H
+    :param rho: ray path density
+    :param chi: ray azimuth density
+    :param beta: damp parameter
+    :param lambda0: parameter define function from rho to damp coefficient
+    :param thres_chi: if chi<thres_chi, don't inv anisotropy model
+    :return: H  M*(n+1) x M*(n+1)
+    """
+    M, n = len(rho), len(beta) - 1
+    H = np.zeros([M*(n+1), M*(n+1)])
+    for i in range(M):
+        H[i, i] = beta[0] * math.exp(-lambda0 * rho[i])
+    for k in range(1, len(beta)):
+        for j in range(M):
+            H[k*M+j, k*M+j] = beta[k] * (0 if chi[j] < thres_chi else 1)
+    return H
 
 
 if __name__ == '__main__':
