@@ -98,6 +98,8 @@ class Pair(object):
                 Pair.cut(st, starttime, endtime)
             except IndexError:
                 continue
+            if all(np.isnan(st[0].data)) or all(np.isnan(st[1].data)):
+                continue
             if snr(st[0]) < snrthreshold or snr(st[1]) < snrthreshold:
                 continue
             print(st)
@@ -324,7 +326,7 @@ def plotdispax(disp, peroid, ax, color='black'):
 if __name__ == '__main__':
     directory = '/home/haosj/data/neTibet/data/'
     evts = Events()
-    evts.addfromdir(directory, '201*')
+    evts.addfromdir(directory, '2015*')
     # pair = Pair('15639', 38.681, 104.352, '61061', 36.526, 108.772)
     pairs = Pairs('/home/haosj/data/neTibet/sta_36_south.lst', evts)
-    pair = pairs.getpair('51535', '62315')
+    # pair = pairs.getpair('51535', '62315')
