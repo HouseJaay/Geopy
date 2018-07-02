@@ -3,6 +3,7 @@ import subprocess
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from glob import glob
 
 
 def do_mft(filename, wave, dist):
@@ -89,7 +90,7 @@ def litho_to_mod96(lat, lon, outname):
     return cps_model
 
 
-def forward_surface(modelname):
+def forward_rayleigh(modelname):
     """
     using given model, forward compute surface wave phase velocity
         group velocity and ZHratio
@@ -104,7 +105,7 @@ def forward_surface(modelname):
     subprocess.run('sregn96', shell=True)
     subprocess.run('slegn96', shell=True)
     subprocess.run(
-        "sdpegn96 -R -C -U -PER -YMIN 2 -YMAX 4.5 -XMIN 1 -XMAX 80 -ASC",
+        "sdpegn96 -R -C -U -PER -YMIN 2 -YMAX 5 -XMIN 1 -XMAX 80 -ASC",
         shell=True)
     subprocess.run("awk '{print $4,$5,$6,$9}' SREGN.ASC > temp", shell=True)
     result = np.loadtxt('temp', skiprows=1)
@@ -113,6 +114,30 @@ def forward_surface(modelname):
     
     result = result.transpose()
     result[3] = 1 / result[3]
+    return result[:, ::-1]  # frequency ascending order
+
+
+def forward_love(modelname):
+    """
+    :param modelname:
+    :return: result[0] frequency, result[1] phase velocity,
+        result[2] group velocity
+    """
+    subprocess.run(
+        "sprep96 -M %s -HS 5 -HR 0 -DT 0.5 -NPTS 2048 -R -L -NMOD 1" % modelname,
+        shell=True)
+    subprocess.run('sdisp96', shell=True)
+    subprocess.run('sregn96', shell=True)
+    subprocess.run('slegn96', shell=True)
+    subprocess.run(
+        "sdpegn96 -L -C -U -PER -YMIN 2 -YMAX 5 -XMIN 1 -XMAX 80 -ASC",
+        shell=True)
+    subprocess.run("awk '{print $4,$5,$6}' SLEGN.ASC > temp", shell=True)
+    result = np.loadtxt('temp', skiprows=1)
+    subprocess.run(
+        'rm sdisp* temp slegn96.egn sregn96.egn SLEGN*', shell=True)
+
+    result = result.transpose()
     return result[:, ::-1]  # frequency ascending order
 
 
@@ -130,7 +155,7 @@ def compute2d(lat, lon, mark, outname):
     for la in range(*lat):
         for lo in range(*lon):
             litho_to_mod96(la, lo, 'temp')
-            forward = forward_surface('temp')
+            forward = forward_rayleigh('temp')
             results = np.interp(freqs, forward[0], forward[mark])
             out += str(lo) + ' ' + str(la) + ' '
             out += ' '.join(map(lambda x: '%.4s' % x, results)) + '\n'
@@ -138,8 +163,62 @@ def compute2d(lat, lon, mark, outname):
         f.write(out)
 
 
+class Inv:
+    @staticmethod
+    def write_surf96(filename, wave, type, flag, mode, peroid_arr, value_arr, err_arr):
+        """
+        write to surf96 format dispersion file
+        :param :refer to cps doc
+        :param filename: filename to write
+        """
+        f = open(filename, 'w')
+        for i in range(len(peroid_arr)):
+               f.write("SURF96 %s %s %s %d %f %f %f\n" % (
+                wave, type, flag, mode, peroid_arr[i], value_arr[i], err_arr[i]
+            ))
+        f.close()
+
+    @staticmethod
+    def read_disp(filename, peroid):
+        disp = np.loadtxt(filename)
+        p_disp = np.c_[peroid.T, disp.T][~np.isnan(disp[0])]
+        Inv.write_surf96('disp.d', 'R', 'C', 'X', 0, p_disp[:, 0],
+                         p_disp[:, 1], p_disp[:, 2])
+
+    @staticmethod
+    def do_inv_netibet(datadir, outdir):
+        iter_num = 5
+
+        disps = glob(datadir+'*')
+        for disp in disps:
+            name = disp.split('/')[-1]
+            Inv.read_disp(disp, np.arange(10, 80))
+            # TODO write model
+            # TODO change parameter
+            subprocess.run("surf96"+" 1 2 6"*iter_num, shell=True)
+            subprocess.run("surf96 28 %s" % outdir+name, shell=True)
+            subprocess.run("surf96 39", shell=True)
+            # TODO monitor output
+
+    @staticmethod
+    def conv_to_plain_vsmodel(datadir, outdir):
+        models = glob(datadir+'*')
+        for model in models:
+            name = model.split('/')[-1]
+            with open(model, 'r') as f:
+                lines = f.readlines()[12:]
+            vs = ""
+            err = ""
+            for line in lines:
+                vs += line.split()[2] + ' '
+                err += '0.05 '  # TODO change it
+            with open(outdir+name, 'w') as f:
+                f.write(vs + '\n')
+                f.write(err + '\n')
+
+
 if __name__ == '__main__':
     model = litho_to_mod96(30, 108, "./testdata/ZHratio/test.d")
     groupv = do_mft('./testdata/ZHratio/g30.r', 'R', 3335.8)
-    forward = forward_surface("./testdata/ZHratio/test.d")
+    forward = forward_rayleigh("./testdata/ZHratio/test.d")
     compute2d((32, 42), (96, 108), 1, 'litho1.0_phasevel')
