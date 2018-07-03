@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+from glob import glob
 
 
 def white_edge_cutter(img):
@@ -56,6 +57,29 @@ def merge_img(imgs, ncol):
     for i in range(1, len(rows)):
         result = np.vstack((result, np.ones([blankh, merged_width, 3]), rows[i]))
     return result
+
+
+def quick_view(name, save=None):
+    """
+    quick view multiple plots
+    :param name: png file name, support wild card, or list of filename
+    :param save: save path for merged image
+    :return: merged image
+    """
+    if isinstance(name, list):
+        files = name
+    elif isinstance(name, str):
+        files = glob(name)
+    else:
+        raise TypeError("name should be string or list")
+    imgs = list(map(mpimg.imread, files))
+    cutter = white_edge_cutter(imgs[0])
+    imgs_cut = list(map(cutter, imgs))
+    merged_img = merge_img(imgs_cut, 2)
+    plt.imshow(merged_img)
+    if save:
+        mpimg.imsave(save, merged_img)
+    return merged_img
 
 
 if __name__ == '__main__':

@@ -163,6 +163,41 @@ def compute2d(lat, lon, mark, outname):
         f.write(out)
 
 
+def plot_mod96(filename):
+    fig, ax = plt.subplots()
+    with open(filename, 'r') as f:
+        models = f.readlines()
+    vp, vs, h = [], [], []
+    for layer in models[12:]:
+        vp.append(float(layer.split()[1]))
+        h.append(float(layer.split()[0]))
+        vs.append(float(layer.split()[2]))
+    if h[-1] == 0:
+        h[-1] = sum(h)*0.1  # infinite half space
+    vpd, vsd, depth = [], [], []
+    for i in range(len(h)):
+        if not depth:
+            depth.append(0)
+        else:
+            depth.append(depth[-1])
+        vpd.append(vp[i])
+        vsd.append(vs[i])
+        depth.append(depth[-1]+h[i])
+        vpd.append(vp[i])
+        vsd.append(vs[i])
+    plt.title(models[1][:-1], y=1.08)
+    ax.set_xlim([min(vs)-1, max(vp)+1])
+    ax.set_xlabel("velocity (km/s)")
+    ax.set_ylim(0, sum(h))
+    ax.set_ylabel("depth (km)")
+    ax.invert_yaxis()
+    ax.xaxis.tick_top()
+    ax.plot(vsd, depth, 'red', label='vs')
+    ax.plot(vpd, depth, 'blue', label='vp')
+    plt.legend()
+    plt.show()
+
+
 class Inv:
     @staticmethod
     def write_surf96(filename, wave, type, flag, mode, peroid_arr, value_arr, err_arr):
@@ -173,7 +208,7 @@ class Inv:
         """
         f = open(filename, 'w')
         for i in range(len(peroid_arr)):
-               f.write("SURF96 %s %s %s %d %f %f %f\n" % (
+            f.write("SURF96 %s %s %s %d %f %f %f\n" % (
                 wave, type, flag, mode, peroid_arr[i], value_arr[i], err_arr[i]
             ))
         f.close()
