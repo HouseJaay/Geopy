@@ -3,11 +3,46 @@ from scipy.fftpack import hilbert
 import obspy
 import matplotlib.pyplot as plt
 import numpy as np
-from Geopy import metadata as mt
 from Geopy import cps
 from obspy.signal.filter import envelope
-import pandas
 import os
+from glob import glob
+
+
+class station:
+    def __init__(self, station_info, event_dir):
+        self.station_files = {}
+        event_files = {}
+        for event in glob(event_dir+'*'):
+            event_files[event] = glob(event+'/*')
+        with open(station_info, 'r') as f:
+            station_lines = f.readlines()
+        for station_line in station_lines:
+            station_name = station_line.split()[0]
+            self.station_files[station_name] = []
+        for event in event_files:
+            files = event_files[event]
+            for filename in files:
+                if filename[-1] == 'Z':
+                    staname = filename.split('/')[-1].split('.')[1]
+                    if staname in self.station_files:
+                        self.station_files[staname].append(
+                            '.'.join(filename.split('.')[:-1]))
+
+    def do(self, freqs, out):
+        for sta in self.station_files:
+            print(sta)
+            result = []
+            outdir = out + sta + '/'
+            if not os.path.exists(outdir):
+                os.makedirs(outdir)
+            for filename in self.station_files[sta]:
+                if os.path.exists(filename+'.Z') and os.path.exists(filename+'.R'):
+                    temp = cal_zhratio(filename+'.Z', filename+'.R', freqs)
+                    if isinstance(temp, np.ndarray):
+                        result.append(temp)
+                        np.savetxt(outdir+filename.split('/')[-1], temp)
+
 
 def plot_progress(zdata, hdata, Z, Z_env, H, H_env, freqs, Win):
     fig, axes = plt.subplots(len(range(0, len(freqs), 2))+1, sharex=True)
@@ -24,6 +59,7 @@ def plot_progress(zdata, hdata, Z, Z_env, H, H_env, freqs, Win):
         axes[j].plot(Win[i]*Z[i].max())
     plt.show()
 
+
 def group_vel_win(filename, stats, freqs, n):
     dist = stats.sac['dist']
     delta = stats.delta
@@ -36,6 +72,7 @@ def group_vel_win(filename, stats, freqs, n):
     left = left.astype('int')
     right = (dist/(gvinterp-n) -timediff)/delta
     right = right.astype('int')
+
     def cut(bound):
         win = np.zeros(npts)
         l = 0 if bound[0] < 0 else bound[0]
@@ -44,10 +81,11 @@ def group_vel_win(filename, stats, freqs, n):
         return win
     return list(map(cut, zip(left, right)))
 
+
 def sel_evt(st):
     def helper(tr):
         if tr.stats.sac['mag'] > 5 and tr.stats.sac['evdp'] <= 40 and\
-        tr.stats.sac['dist'] > 1500 and tr.stats.sac['dist'] < 8000:
+            tr.stats.sac['dist'] > 1500 and tr.stats.sac['dist'] < 8000:
             start = tr.stats.starttime
             return "X2.%s.%d.%03d.%02d.%02d.%02d.00" %(
             tr.stats.station,start.year,start.julday,start.hour,
@@ -55,61 +93,72 @@ def sel_evt(st):
         else:
             return None
     return list(filter(lambda x:True if x else False,map(helper,st)))
- 
+
+
 def check_corr2(Z,H,freqs,delta):
-    norm = list(map(lambda x:(np.dot(x[0],x[0])*np.dot(x[1],x[1]))**0.5
-    ,zip(Z,H)))
+    norm = list(map(lambda x: (np.dot(x[0], x[0])*np.dot(x[1], x[1]))**0.5
+    , zip(Z, H)))
     COR = list(map(lambda x:signal.correlate(x[0],x[1])/x[2],zip(Z,H,norm)))
+
     def helper(x):
         cor,freq = x[0],x[1]
         n = int((len(cor)-1)/2) + int(1/freq/4/delta)
         return cor[n]
     return np.array(list(map(helper,zip(COR,freqs))))
 
-def cal_zhratio(zfile,rfile,freqs,bpwidth=0.002,outname=None,plot=None,
-threshold=0.8):
+
+def cal_zhratio(zfile, rfile, freqs, bpwidth=0.002, outname=None, plot=None,
+                threshold=0.8, minpoint=3):
     try:
         st = obspy.read(zfile)
         st += obspy.read(rfile)
-    except Exception:
-        print("file error %s %s" %(zfile,rfile))
+    except TypeError:
+        print("file error %s %s" % (zfile, rfile))
         return 0
-    st[0].data = signal.detrend(st[0].data) #hilbert transform z component
+    if len(st[0].data) != len(st[1].data):
+        print('different length')
+        return 0
+    st[0].data = signal.detrend(st[0].data)  # hilbert transform z component
     st[0].data = hilbert(st[0].data)
     st[1].data = signal.detrend(st[1].data)
     delta = st[0].stats.delta
     dist = st[0].stats.sac['dist']
-    def_b = lambda f:signal.firwin(1001,[f-bpwidth,f+bpwidth],
-    window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
-    B = list(map(def_b,freqs))
-    Win = group_vel_win(zfile,st[0].stats,freqs,1)
-    Z = list(map(lambda b:signal.lfilter(b,1,st[0].data),B))
-    Z = list(map(lambda x:x[0]*x[1],zip(Win,Z)))
-    H = list(map(lambda b:signal.lfilter(b,1,st[1].data),B))
-    H = list(map(lambda x:x[0]*x[1],zip(Win,H)))
-    Z_env = list(map(envelope,Z))
-    H_env = list(map(envelope,H))
+    def_b = lambda f: signal.firwin(1001, [f-bpwidth, f+bpwidth],
+    window=('kaiser', 9), nyq=1/delta/2, pass_zero=False)
+    B = list(map(def_b, freqs))
+    try:
+        Win = group_vel_win(zfile, st[0].stats, freqs, 1)
+    except TypeError:
+        print('error when calculate group velocity:')
+        print(zfile)
+        return 0
+    Z = list(map(lambda b: signal.lfilter(b, 1, st[0].data), B))
+    Z = list(map(lambda x: x[0]*x[1], zip(Win, Z)))
+    H = list(map(lambda b: signal.lfilter(b, 1, st[1].data), B))
+    H = list(map(lambda x: x[0]*x[1], zip(Win, H)))
+    Z_env = list(map(envelope, Z))
+    H_env = list(map(envelope, H))
     
-    cor_eff = np.array(list(map(lambda x:np.corrcoef(
-    x[0],x[1])[1,0],zip(H,Z))))
-    if len(cor_eff[cor_eff>threshold]) < 3:
+    cor_eff = np.array(list(map(lambda x: np.corrcoef(
+                       x[0], x[1])[1, 0], zip(H, Z))))
+    if len(cor_eff[cor_eff > threshold]) < minpoint:
         return False
 
-    ratio = np.array(list(map(lambda e:max(e[0])/max(e[1]),
-    zip(Z_env,H_env))))
-    result = np.vstack((freqs,ratio)).transpose()
+    ratio = np.array(list(map(lambda e: max(e[0])/max(e[1]),
+                     zip(Z_env, H_env))))
+    result = np.vstack((freqs, ratio)).transpose()
     if outname:
-        np.savetxt(outname,result,fmt='%.2f')
-    if plot==1:
-        plt.plot(freqs,ratio,'.')
+        np.savetxt(outname, result, fmt='%.2f')
+    if plot == 1:
+        plt.plot(freqs, ratio, '.')
         plt.show()
-    if plot==2:
-        plot_progress(st[0].data,st[1].data,
-        Z,Z_env,H,H_env,freqs,Win)
-    return np.array(list(map(lambda x:x[0] if x[1]>threshold else None,
-    zip(ratio,cor_eff))),dtype=np.float)
+    if plot == 2:
+        plot_progress(st[0].data, st[1].data, Z, Z_env, H, H_env, freqs, Win)
+    return np.array(list(map(lambda x: x[0] if x[1] > threshold else np.nan,
+                    zip(ratio, cor_eff))), dtype=np.float)
 
-def do_single_sta(sta_dir,freqs):
+
+def do_single_sta(sta_dir, freqs):
     st = obspy.read(sta_dir + '*.Z',headonly=True)
     commons = sel_evt(st)
     print(len(commons))
@@ -138,6 +187,8 @@ def do_single_sta(sta_dir,freqs):
             mean_results.append(np.nanmean(cur_results, axis=0))
             std_results.append(np.nanstd(cur_results, axis=0))
     return results,baz,cent_bazs,mean_results,std_results
+
+
 if __name__ == '__main__':
     if False: # plot synthetic test
         dists = ['20','30','40','50','60','70','80']
