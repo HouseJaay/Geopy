@@ -15,7 +15,7 @@ def do_mft(filename, wave, dist):
     :param dist: epicenter distance(km)
     :return: result[0] frequency, result[1] group velocity
     """
-    chose_alpha = {1000: 25, 2000: 50, 4000: 100, 18000: 200}
+    chose_alpha = {1000: 25, 2000: 50, 4000: 100, 180000: 200}
     command = ['sacmft96', '-f', filename]
     for distmax in chose_alpha:
         if dist <= distmax:
@@ -141,19 +141,20 @@ def forward_love(modelname):
     return result[:, ::-1]  # frequency ascending order
 
 
-def compute2d(lat, lon, mark, outname):
+def compute2d(lat, lon, mark, outname, step=1, freqs=(0.1, 0.05, 0.04, 0.025, 0.02, 0.0125)):
     """
     compute 2d data
     :param lat: latitude range
     :param lon: longitude range
     :param mark: 1 phase vel, 2 group vel, 3 ZHratio
     :param outname: write filename
+    :param step: step between nodes
+    :param freqs: frequency of result
     :return:
     """
-    freqs = [0.1, 0.05, 0.04, 0.025, 0.02, 0.0125]
     out = ""
-    for la in range(*lat):
-        for lo in range(*lon):
+    for la in np.arange(lat[0], lat[1]+step, step):
+        for lo in np.arange(lon[0], lon[1]+step, step):
             litho_to_mod96(la, lo, 'temp')
             forward = forward_rayleigh('temp')
             results = np.interp(freqs, forward[0], forward[mark])
@@ -186,7 +187,7 @@ def plot_mod96(filename):
         vpd.append(vp[i])
         vsd.append(vs[i])
     plt.title(models[1][:-1], y=1.08)
-    ax.set_xlim([min(vs)-1, max(vp)+1])
+    ax.set_xlim(min(vs)-1, max(vp)+1)
     ax.set_xlabel("velocity (km/s)")
     ax.set_ylim(0, sum(h))
     ax.set_ylabel("depth (km)")
@@ -198,7 +199,97 @@ def plot_mod96(filename):
     plt.show()
 
 
+def plot_single_mod96_vs(filename, ax, color, label=None):
+    with open(filename, 'r') as f:
+        models = f.readlines()
+    vp, vs, h = [], [], []
+    for layer in models[12:]:
+        vp.append(float(layer.split()[1]))
+        h.append(float(layer.split()[0]))
+        vs.append(float(layer.split()[2]))
+    if h[-1] == 0:
+        h[-1] = sum(h)*0.1  # infinite half space
+    vpd, vsd, depth = [], [], []
+    for i in range(len(h)):
+        if not depth:
+            depth.append(0)
+        else:
+            depth.append(depth[-1])
+        vpd.append(vp[i])
+        vsd.append(vs[i])
+        depth.append(depth[-1]+h[i])
+        vpd.append(vp[i])
+        vsd.append(vs[i])
+    ax.plot(vsd, depth, color=color, label=label)
+
+
+def plot_multi_mod96_vs(vlim, hlim, models):
+    """
+    plot multiple models
+    :param vlim: (vmin, vmax)
+    :param hlim: (hmin, hmax)
+    :param models: ([file1, file2, ...], color, label)
+    :return: None
+    """
+    fig, ax = plt.subplots()
+    ax.set_xlim(*vlim)
+    ax.set_ylim(*hlim)
+    ax.set_xlabel("S-velocity (km/s)")
+    ax.set_ylabel("depth (km)")
+    ax.invert_yaxis()
+    ax.xaxis.tick_top()
+    for model in models:
+        plot_single_mod96_vs(model[0][0], ax, model[1], label=model[2])
+        for m in model[0][1:]:
+            plot_single_mod96_vs(m, ax, color=model[1], label=None)
+    plt.legend()
+    plt.show()
+
+
+def _plot_disp_from_mod96(modelname, ax, color, label=None):
+    result = forward_rayleigh(modelname)
+    per = 1 / result[0]
+    pha = result[1]
+    ax.plot(per, pha, color=color, label=label)
+
+
+def _plot_disp_from_file(dispfile, ax, color, label=None):
+    subprocess.run("awk '{print $6,$7}' %s > temp.d" % dispfile, shell=True)
+    disp = np.loadtxt('temp.d')
+    ax.plot(disp[:, 0], disp[:, 1], '.', color=color, label=label)
+    os.remove('./temp.d')
+
+
+def plot_multi_disp(vlim, plim, disps, models):
+    fig, ax = plt.subplots()
+    ax.set_xlim(*plim)
+    ax.set_ylim(*vlim)
+    ax.set_xlabel("peroid (s)")
+    ax.set_ylabel("S-velocity (km/s)")
+    for model in models:
+        _plot_disp_from_mod96(model[0][0], ax, model[1], label=model[2])
+        for m in model[0][1:]:
+            _plot_disp_from_mod96(m, ax, color=model[1], label=None)
+    for disp in disps:
+        _plot_disp_from_file(disp[0][0], ax, disp[1], label=disp[2])
+        for d in disp[0][1:]:
+            _plot_disp_from_file(d, ax, disp[1], label=None)
+    plt.legend()
+    plt.show()
+
+
 class Inv:
+    @staticmethod
+    def write_sobs(modelname, dispname):
+        """
+        write config file of inversion program
+        """
+        f = open('sobs.d', 'w')
+        f.write("0.005 0.005 0.0 0.005 0.0\n")
+        f.write("0 0 0 0 0 1 0 0 1 0\n")
+        f.write("%s\n" % modelname)
+        f.write("%s\n" % dispname)
+
     @staticmethod
     def write_surf96(filename, wave, type, flag, mode, peroid_arr, value_arr, err_arr):
         """
@@ -221,15 +312,15 @@ class Inv:
                          p_disp[:, 1], p_disp[:, 2])
 
     @staticmethod
-    def do_inv_netibet(datadir, outdir):
-        iter_num = 5
-
+    def do_inv_netibet(datadir, outdir, smooth=True, iter_num=5):
         disps = glob(datadir+'*')
         for disp in disps:
             name = disp.split('/')[-1]
             Inv.read_disp(disp, np.arange(10, 80))
             # TODO write model
             # TODO change parameter
+            if not smooth:
+                subprocess.run("surf96 36 0", shell=True)
             subprocess.run("surf96"+" 1 2 6"*iter_num, shell=True)
             subprocess.run("surf96 28 %s" % outdir+name, shell=True)
             subprocess.run("surf96 39", shell=True)
