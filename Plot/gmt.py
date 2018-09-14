@@ -59,11 +59,12 @@ def merge_img(imgs, ncol):
     return result
 
 
-def quick_view(name, save=None):
+def quick_view(name, save=None, column=2):
     """
     quick view multiple plots
     :param name: png file name, support wild card, or list of filename
     :param save: save path for merged image
+    :param column: columns of plots
     :return: merged image
     """
     if isinstance(name, list):
@@ -75,7 +76,7 @@ def quick_view(name, save=None):
     imgs = list(map(mpimg.imread, files))
     cutter = white_edge_cutter(imgs[0])
     imgs_cut = list(map(cutter, imgs))
-    merged_img = merge_img(imgs_cut, 2)
+    merged_img = merge_img(imgs_cut, column)
     plt.imshow(merged_img)
     if save:
         mpimg.imsave(save, merged_img)

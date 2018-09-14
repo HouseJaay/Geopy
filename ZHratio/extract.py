@@ -113,10 +113,15 @@ def cal_zhratio(zfile, rfile, freqs, bpwidth=0.002, outname=None, plot=None,
         st = obspy.read(zfile)
         st += obspy.read(rfile)
     except TypeError:
-        print("file error %s %s" % (zfile, rfile))
+        print("file read error %s %s" % (zfile, rfile))
         return 0
     if len(st[0].data) != len(st[1].data):
-        print('different length')
+        print('different length error:')
+        print(zfile)
+        return 0
+    if any(np.isnan(st[0].data)) or any(np.isnan(st[1].data)):
+        print('data have nan value error:')
+        print(zfile)
         return 0
     st[0].data = signal.detrend(st[0].data)  # hilbert transform z component
     st[0].data = hilbert(st[0].data)
@@ -129,7 +134,7 @@ def cal_zhratio(zfile, rfile, freqs, bpwidth=0.002, outname=None, plot=None,
     try:
         Win = group_vel_win(zfile, st[0].stats, freqs, 1)
     except TypeError:
-        print('error when calculate group velocity:')
+        print('calculate group velocity error:')
         print(zfile)
         return 0
     Z = list(map(lambda b: signal.lfilter(b, 1, st[0].data), B))

@@ -1,5 +1,6 @@
 from glob import glob
 import numpy as np
+from scipy import stats
 import matplotlib.pyplot as plt
 import os
 
@@ -29,28 +30,31 @@ def window(arr, win):
     arr[win[1]:] = np.NaN
 
 
-def reject_outliers(prev_dir, out_dir):
+def reject_outliers(prev_dir, out_dir, thr_num=5, thr_len=40, thr_std=0.03,
+                    x_value=np.arange(10, 80), n=1.5, verbose=False):
     """
     statistically reject outliers
     :param prev_dir: directory of dispersion curve
     :param out_dir: directory to save selected dispersion,
         result[0] mean vel, result[1] std
+    :param thr_num: threshold quantities of result
+    :param thr_len: threshold quantities of continuous data point
+    :param thr_std: threshold of std/mean
+    :param x_value: frequency of peroids corresponding to result data, used to plot
+    :param n: control outlier threshold
+    :param verbose: display detailed plot
     :return: None
     """
-    thr_num = 10
-    thr_len = 40
-    PRANGE = (10, 80)
-    verbose = True
-    n = 1.5
-
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     prev_dirs = glob(prev_dir + '*')
     for dire in prev_dirs:
+        print(dire)
         pair = dire.split('/')[-1]
         results = []
         disp_files = glob(dire + '/*')
         if len(disp_files) < thr_num:
+            print('1')
             continue
         for disp_file in disp_files:
             results.append(np.loadtxt(disp_file))
@@ -58,10 +62,12 @@ def reject_outliers(prev_dir, out_dir):
         mean = np.nanmean(results, axis=0)
         std = np.nanstd(results, axis=0)
         # quantity and quality(std) of data
-        mask = (std / mean) < 0.03
-        mask = mask & (np.sum(~np.isnan(results), axis=0) > thr_num)
+        print(std/mean)
+        mask = (std / mean) < thr_std
+        mask = mask & (np.sum(~np.isnan(results), axis=0) > thr_len)
         out_range = max_conti_true(mask, thr_len)
         if out_range[1] - out_range[0] == 0:
+            print('2')
             continue
         # reject outliers
         selected = np.zeros(results.shape)
@@ -73,25 +79,28 @@ def reject_outliers(prev_dir, out_dir):
         print(pair)
         # calculate mean and std of selected data, and window it
         smean = np.nanmean(selected, axis=0)
-        sstd = np.nanstd(selected, axis=0)
+        # sstd = np.nanstd(selected, axis=0)
+        sstd = stats.sem(selected, axis=0, nan_policy='omit')
         window(smean, out_range)
         window(sstd, out_range)
         # write
         np.savetxt(out_dir+pair, np.vstack([smean, sstd]))
         # verbose mode
         if verbose:
+            ylim = (1.0, 1.7)
+            # ylim = (2.9, 4.3)
             fig, axes = plt.subplots(1, 2, sharex=True, sharey=True)
             fig.set_size_inches(10, 5)
             for i in range(len(results)):
-                axes[0].plot(np.arange(*PRANGE), results[i], color='orange')
-                axes[0].plot(np.arange(*PRANGE), selected[i], color='black')
-            axes[1].plot(np.arange(*PRANGE), mean, color='red', label='raw')
-            axes[1].plot(np.arange(*PRANGE), smean, color='blue', label='selected')
+                axes[0].plot(x_value, results[i], color='orange')
+                axes[0].plot(x_value, selected[i], color='black')
+            axes[1].plot(x_value, mean, color='red', label='raw')
+            axes[1].plot(x_value, smean, color='blue', label='selected')
             axes[1].grid(color='grey', linestyle='dashed')
             axes[0].grid(color='grey', linestyle='dashed')
             axes[1].legend()
-            axes[0].set_ylim(2.9, 4.3)
-            axes[0].set_xlim(10, 80)
+            axes[0].set_ylim(*ylim)
+            axes[0].set_xlim(min(x_value), max(x_value))
             plt.show(block=False)
             _ = input('>')
             plt.close()
@@ -99,4 +108,4 @@ def reject_outliers(prev_dir, out_dir):
 
 if __name__ == '__main__':
     root = '/home/haosj/data/neTibet/'
-    reject_outliers(root+'result/', root+'result2/')
+    reject_outliers(root+'result/', root+'result_new/')

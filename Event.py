@@ -40,15 +40,16 @@ class Events(object):
     def __init__(self):
         self.evts = {}
 
-    def addfromdir(self, directory, wild):
-        times = map(lambda x: x.split('/')[-1], glob(directory + wild))
+    def addfromdir(self, directory, timewild, filewild='*.Z'):
+        times = map(lambda x: x.split('/')[-1], glob(directory + timewild))
         for time in times:
-            files = glob(directory + time + '/*.Z')
-            filename = files[0]
-            tr = obspy.read(filename)[0]
-            self.evts[time] = Event(tr, filename)
-            for file in files:
-                self.evts[time].addstation(file)
+            files = glob(directory + time + '/' + filewild)
+            if len(files) > 0:
+                filename = files[0]
+                tr = obspy.read(filename)[0]
+                self.evts[time] = Event(tr, filename)
+                for file in files:
+                    self.evts[time].addstation(file)
 
     def __iter__(self):
         return iter(self.evts.values())

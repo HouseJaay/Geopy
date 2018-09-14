@@ -75,9 +75,9 @@ class Pair(object):
         st[0].stats.starttime = start
         st[1].stats.starttime = start
 
-    def do_ts(self, out_path='/home/haosj/data/neTibet/result/'):
+    def do_ts(self, out_path='/home/haosj/data/neTibet/result/', wavetype='R', manual=False):
         snrthreshold = 5
-        self._set_reference_disp()
+        self._set_reference_disp(wavetype)
         out_path += self.sta1 + '_' + self.sta2 + '/'
         if not os.path.exists(out_path):
             os.mkdir(out_path)
@@ -115,7 +115,7 @@ class Pair(object):
             ax2 = plt.subplot(gs[:, 15:])
             # compute and select
             phvel = ts.two_station(st, self.staDist, (2.9, 4.3), self.PRANGE, (axes, ax2))
-            hand = self._selectvelocity(phvel, ax2, manual=False)
+            hand = self._selectvelocity(phvel, ax2, manual=manual)
             if hand:
                 self.disp.append(phvel)
                 np.savetxt(out_file, phvel)
@@ -208,7 +208,7 @@ class Pair(object):
                 velocity[i] = np.NaN
         return True
 
-    def _set_reference_disp(self):
+    def _set_reference_disp(self, wavetype):
         """
         set reference disp curve, in order to auto select results
         :return: None
@@ -217,7 +217,10 @@ class Pair(object):
         meanlat = (self.latlon1[0] + self.latlon2[0]) / 2.0
         meanlon = (self.latlon1[1] + self.latlon2[1]) / 2.0
         cps.litho_to_mod96(meanlat, meanlon, 'litho.m')
-        result = cps.forward_surface('litho.m')
+        if wavetype == 'R':
+            result = cps.forward_rayleigh('litho.m')
+        elif wavetype == 'L':
+            result = cps.forward_love('litho.m')
         os.remove('litho.m')
         self.refdisp = np.interp(range(*self.PRANGE), 1.0/result[0][::-1], result[1][::-1])
 

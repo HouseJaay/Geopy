@@ -2,6 +2,7 @@ from pyproj import Geod
 from Geopy.Tomo.barmin import sphere2cartesian
 import numpy as np
 from math import *
+import random
 
 
 def model1(lat, lon):
@@ -12,6 +13,15 @@ def model1(lat, lon):
     """
     lat, lon = int(lat), int(lon)
     cI = ((lat % 2 and lon % 2) or (not lat % 2 and not lon % 2)) * 0.5 + 3.2
+    return cI, 0, 0, 0, 0
+
+
+def model_fake_anis(lat, lon):
+    lat, lon = int(lat), int(lon)
+    if lon < 105:
+        cI = 3.2
+    else:
+        cI = 3.7
     return cI, 0, 0, 0, 0
 
 
@@ -42,8 +52,24 @@ def model3(lat, lon):
     cI = block * 0.5 + 3.2
     la, lo = lat//2, lon//2
     block2 = ((la % 2 and lo % 2) or (not la % 2 and not lo % 2))
-    A1 = 0.02 * cI * (-1)**(block2+1)
+    A1 = 0.01 * cI * (-1)**(block2+1)
     A2 = 0
+    return cI, A1, A2, 0, 0
+
+
+def model_test(lat, lon):
+    """
+    :param lat:
+    :param lon:
+    :return: [cI, A1, A2, A3, A4]
+    """
+    lat, lon = int(lat), int(lon)
+    block = ((lat % 2 and lon % 2) or (not lat % 2 and not lon % 2))
+    cI = block * 0.5 + 3.2
+    la, lo = lat//2, lon//2
+    block2 = ((la % 2 and lo % 2) or (not la % 2 and not lo % 2))
+    A2 = -0.01 * cI
+    A1 = 0
     return cI, A1, A2, 0, 0
 
 
@@ -63,7 +89,7 @@ def write_model(model, ins, anis=None):
                 azfast = (90 - theta) / 2
                 gmt_azfast = 90 - azfast
                 amp = sqrt(a1 ** 2 + a2 ** 2)
-                gmt_amp = amp / (0.02*4)
+                gmt_amp = amp / (0.01*4)
                 f.write("%f %f %f %fc 0.1c\n" % (lon, lat, gmt_azfast, gmt_amp))
 
 
@@ -114,12 +140,13 @@ def syn_ray(ray, model):
     return time, distance / time
 
 
-def checkboard_ds2004(into_file, model, out):
+def checkboard_ds2004(into_file, model, out, gauss_std=0):
     """
     form intomodesVs type file for DS2004
     :param into_file: intomodesVs type file contain rays
     :param model: checkboard model
     :param out: output intomodesVs file
+    :param gauss_std: add gauss noise
     :return:
     """
     fin = open(into_file, 'r')
@@ -128,6 +155,7 @@ def checkboard_ds2004(into_file, model, out):
     for i in range(0, len(lines), 4):
         cur = lines[i:i+4]
         vel = syn_ray(list(map(lambda x: float(x), cur[1].split())), model)[1]
+        vel += random.gauss(0, gauss_std)
         cur[2] = str(vel) + '\n'
         fout.write(''.join(cur))
     fin.close()
@@ -135,6 +163,6 @@ def checkboard_ds2004(into_file, model, out):
 
 
 if __name__ == '__main__':
-    write_model(model3, 'tomo_model3', 'tomo_anvs_model3')
+    write_model(model_test, 'tomo_model_test', 'tomo_anvs_model_test')
     # test_integrate(0, 5, 80, 130)
     # t = syn_ray((30, 100, 35, 110), model1)

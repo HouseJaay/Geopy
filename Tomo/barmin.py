@@ -134,6 +134,7 @@ def compute_ray_density(rays, rnodes, radius):
     rho = [0 for _ in range(len(rnodes))]
     azs = [[] for _ in range(len(rnodes))]
     for ray in rays:
+        ray = [(ray[0], ray[1]), (ray[2], ray[3])]
         az = distaz(*ray[0], *ray[1]).getAz()
         if az >= 180:
             az -= 180
@@ -145,12 +146,16 @@ def compute_ray_density(rays, rnodes, radius):
                 if inarc or (d1 < radius or d2 < radius):
                     rho[i] += 1
                     azs[i].append(az)
+                    # TODO fix bug. azimuths is not constant on one ray
     chi = [0 for _ in range(len(rnodes))]
     for i in range(len(chi)):
-        hist = [0 for _ in range(10)]
-        for az in azs[i]:
-            hist[az//18] += 1
-        chi[i] = sum(hist) / (10 * max(hist))
+        if len(azs[i]) == 0:
+            chi[i] = 0
+        else:
+            hist = [0 for _ in range(10)]
+            for az in azs[i]:
+                hist[int(az)//18] += 1
+            chi[i] = sum(hist) / (10 * max(hist))
     return rho, chi
 
 
@@ -174,12 +179,87 @@ def define_H(rho, chi, beta, lambda0, thres_chi):
     return H
 
 
+def plot_ray(rays, plotlim):
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    ax.set_extent(plotlim, crs=ccrs.PlateCarree())
+    ax.stock_img()
+    ax.coastlines()
+    for ray in rays:
+        ax.plot([ray[1], ray[3]], [ray[0], ray[2]], color='grey', transform=ccrs.Geodetic())
+    plt.show()
+
+
+def plot_density(density, rnodes, r):
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    ax.set_extent(r, crs=ccrs.PlateCarree())
+    ax.stock_img()
+    ax.coastlines()
+    rnodes = np.array(rnodes)
+    lats = sorted(list(set(rnodes[:, 0])))
+    lons = sorted(list(set(rnodes[:, 1])))
+    density = np.array(density).reshape(len(lats), len(lons))
+    temp = ax.contourf(lons, lats, density, transform=ccrs.PlateCarree())
+    fig.colorbar(temp)
+    plt.show()
+
+
+def gmt_density(val, rnodes, filename):
+    f = open(filename, 'w')
+    for i, rnode in enumerate(rnodes):
+        f.write("%f %f %f\n" % (rnode[1], rnode[0], val[i]))
+    f.close()
+
+
+def gmt_ray(rays, filename):
+    f = open(filename, 'w')
+    for ray in rays:
+        f.write(">\n%f %f\n%f %f\n" % (ray[1], ray[0], ray[3], ray[2]))
+    f.close()
+
+
+# project on a single plane, because current research area is small
+# change later
+def proj_to_cube(lat, lon, clon=105):
+    """
+    project sphere point on square, edge length = 2
+    :param lat: latitude (-45 ~ 45)
+    :param lon: longitude (clon-45 ~ clon+45)
+    :param clon: central longitude
+    :return: coordinate on plane
+    """
+    lat = lat * math.pi / 180.0
+    lon = lon * math.pi / 180.0
+    clon = clon * math.pi / 180.0
+    y = math.tan(lat)
+    x = math.tan(lon-clon)
+    return x, y
+
+
+def proj_to_sphere(x, y, clon=105):
+    lat = math.atan(y) * 180 / math.pi
+    lon = math.atan(x) * 180 / math.pi + clon
+    return lat, lon
+
+
 if __name__ == '__main__':
     data = '/home/haosj/data/neTibet/'
-    ray, time, mis = read_dispersion(data+'result2/', data+'metadata/sta_36_south.lst', 10)
-    rnodes = [(x, y) for x in range(30, 35) for y in range(100, 105)]
-    F = define_F([1, 2], [2, 3], rnodes)
-    plt.matshow(F)
-    plt.colorbar()
-    plt.show(block=True)
-    test_ray_dist_to_node()
+    laran, loran = (30, 37), (101, 109)
+    radius = 0.5
+    ray, time, mis = read_dispersion(
+            data+'result3/', data+'metadata/sta_36_south.lst', 10)
+    rnodes = [
+            (x, y) for x in np.arange(laran[0], laran[1]+radius, radius)
+            for y in np.arange(loran[0], loran[1]+radius, radius)]
+    # F = define_F([1, 2], [2, 3], rnodes)
+    # plt.matshow(F)
+    # plt.colorbar()
+    # plt.show(block=True)
+    # test_ray_dist_to_node()
+    # plot_ray(ray, loran+laran)
+    # rho, chi = compute_ray_density(ray, rnodes, radius/2.0)
+    # gmt_density(rho, rnodes, './plot/rho')
+    # gmt_density(chi, rnodes, './plot/chi')
+    # plot_density(rho, rnodes, loran+laran)
+    gmt_ray(ray, './plot/ray')
