@@ -164,6 +164,42 @@ def compute2d(lat, lon, mark, outname, step=1, freqs=(0.1, 0.05, 0.04, 0.025, 0.
         f.write(out)
 
 
+def read_kernel(kernel_file, wavetype):
+    """
+    read kernel file from srfker96
+    need sobs.d tdisp.d
+    :param kernel_file: kernel file path
+    :param wavetype: 'R' or 'L'
+    :return:
+    """
+    table = {'R': 4, 'L': 2}
+    index = table[wavetype]
+    count = 0
+    with open(kernel_file, 'r') as f:
+        lines = f.readlines()
+    i = 0
+    while count < index:
+        if lines[i][0] == '_':
+            count += 1
+        i += 1
+    i += 2
+    result = []
+    while lines[i][0] != '_':
+        result.append(list(map(lambda x: float(x), lines[i].split())))
+        i += 1
+    result = np.array(result)
+    depth = result[:, 1]
+    sensi = result[:, 3]
+    fig, ax = plt.subplots()
+    fig.set_size_inches(5, 6)
+    plt.title("Sensitivity(dC/dVs)")
+    ax.set_ylabel("Depth(km)")
+    ax.invert_yaxis()
+    ax.plot(sensi, np.arange(len(sensi)))
+    plt.show()
+    return depth, sensi
+
+
 def plot_mod96(filename):
     fig, ax = plt.subplots()
     with open(filename, 'r') as f:
