@@ -83,12 +83,40 @@ def quick_view(name, save=None, column=2):
     return merged_img
 
 
+def get_cpt(image, cptout):
+    """
+    extract cptfile from a colorbar image file
+    :param image: colorbar image file
+    :param cptout: output cpt file path
+    :return:
+    """
+    head = """# COLOR_MODEL = RGB
+    """
+    img = mpimg.imread(image)
+    is_vertical = True
+    colorbar = None
+    for nrow in range(img.shape[0]):
+        if len(set(np.sum(img[nrow, :, :], axis=1))) > 0.2 * img.shape[1]:
+            is_vertical = False
+            colorbar = img[nrow+5, :, :]
+            break
+    if is_vertical:
+        for ncol in range(img.shape[1]):
+            if len(set(np.sum(img[:, ncol, :], axis=1))) > 0.2 * img.shape[2]:
+                colorbar = img[:, ncol+5, :]
+                break
+    if colorbar is None:
+        raise ValueError('colorbar must account for most of the input image')
+
+    show = []
+    for _ in range(20):
+        show.append(colorbar)
+    show = np.array(show)
+    plt.imshow(show)
+
+    # TODO cut and write
+    return colorbar
+
+
 if __name__ == '__main__':
-    DATA = '/home/haosj/data/neTibet/tomo/'
-    img1 = mpimg.imread(DATA+'tomo_30.png')
-    img2 = mpimg.imread(DATA+'tomo_40.png')
-    img3 = mpimg.imread(DATA+'tomo_60.png')
-    cutter = white_edge_cutter(img1)
-    merged_img = merge_img([cutter(img1), cutter(img2), cutter(img3)], 2)
-    plt.imshow(merged_img)
-    mpimg.imsave('merged.png', merged_img)
+    colorbar = get_cpt('./testdata/colorbar.png', 'temp')
