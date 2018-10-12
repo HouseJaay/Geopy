@@ -83,38 +83,84 @@ def quick_view(name, save=None, column=2):
     return merged_img
 
 
+def _view_row(row):
+    show = []
+    for _ in range(20):
+        show.append(row)
+    show = np.array(show)
+    plt.imshow(show)
+
+
 def get_cpt(image, cptout):
     """
     extract cptfile from a colorbar image file
+    assumption: this image should have white background and black rectangle border
     :param image: colorbar image file
     :param cptout: output cpt file path
     :return:
     """
     head = """# COLOR_MODEL = RGB
     """
+    border_color = np.array([0, 0, 0])  # black border
+
+    def check_border(line):
+        diff = abs(line[:, :3] - border_color)
+        is_black = np.mean(diff, axis=1) < 0.5
+        is_continuous = np.array([False for _ in range(len(is_black))])
+        for j in range(len(line)-1):
+            if np.mean(line[j] - line[j+1]) < 0.1:
+                is_continuous[j] = True
+        is_border = is_black & is_continuous
+        max_len, beg, end = 0, 0, 0
+        cur_beg = None
+        for j in range(len(is_border)):
+            if is_border[j]:
+                if cur_beg is None:
+                    cur_beg = j
+                if (j == len(is_border) - 1) or (j < len(is_border) - 1 and (not is_border[j+1])):
+                    if j - cur_beg > max_len:
+                        beg, end = cur_beg, j
+                        max_len = end - beg
+                    cur_beg = None
+        return [max_len, beg, end]
+
     img = mpimg.imread(image)
+    result = []
+    for nrow in range(img.shape[0]):
+        result.append(check_border(img[nrow, :, :]))
+    return result
     is_vertical = True
     colorbar = None
     for nrow in range(img.shape[0]):
-        if len(set(np.sum(img[nrow, :, :], axis=1))) > 0.2 * img.shape[1]:
+        if len(set(np.sum(img[nrow, :, :], axis=1))) > 0.3 * img.shape[1]:
+            print(nrow)
             is_vertical = False
             colorbar = img[nrow+5, :, :]
             break
     if is_vertical:
         for ncol in range(img.shape[1]):
-            if len(set(np.sum(img[:, ncol, :], axis=1))) > 0.2 * img.shape[2]:
+            if len(set(np.sum(img[:, ncol, :], axis=1))) > 0.3 * img.shape[0]:
                 colorbar = img[:, ncol+5, :]
                 break
     if colorbar is None:
         raise ValueError('colorbar must account for most of the input image')
-
-    show = []
-    for _ in range(20):
-        show.append(colorbar)
-    show = np.array(show)
-    plt.imshow(show)
-
-    # TODO cut and write
+    prev, cur = None, None
+    for i in range(1, len(colorbar)):  # find edge of colorbar
+        if abs(sum(colorbar[i, :3]) - sum(colorbar[i-1, :3])) > 2.5:
+            if prev is None:
+                prev = i
+            else:
+                if cur is None:
+                    cur = i
+                else:
+                    prev = cur
+                    cur = i
+                if cur - prev > 0.3 * len(colorbar):
+                    print(prev, cur)
+                    colorbar = colorbar[prev+1:cur-1]
+                    break
+    # TODO need more test and output cpt
+    _view_row(colorbar)
     return colorbar
 
 
