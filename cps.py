@@ -41,19 +41,37 @@ def do_mft(filename, wave, dist):
     return np.vstack([f[::-1], c[::-1]])
 
 
-def litho_to_mod96(lat, lon, outname):
+def litho_to_mod96(lat, lon, outname, firstrow_name='CRUST1-TOP', lastrow_name=None):
     """
     access LITHO1.0 and convert to mod96 format
     :param lat: latitude
     :param lon: longitude
     :param outname: mod96 model file name
+    :param firstrow_name: select shallowest layer
+    :param lastrow_name: select deepest layer and set it to 100
     :return:
     """
     subprocess.run(
         "access_litho -p %d %d | awk '{print $1,$2,$3,$4,$5,$6}' > litho.temp"
         % (lat, lon), shell=True)
     model = np.loadtxt("litho.temp")
+
+    # select rows
+    subprocess.run(
+        "access_litho -p %d %d | awk '{print $10}' > layername.temp"
+        % (lat, lon), shell=True)
+    first_row = 0
+    last_row = len(model)
+    with open('layername.temp', 'r') as f:
+        layer_name = f.read().split()[::-1]
+        for i in range(len(layer_name)):
+            if firstrow_name and firstrow_name == layer_name[i]:
+                first_row = i
+            if lastrow_name and lastrow_name == layer_name[i]:
+                last_row = i+1
+
     model = model[::-1, :]
+    model = model[first_row:last_row, :]
     model[:, :4] = model[:, :4]/1000
     model[:, 0] = model[:, 0] - model[0][0]
     # convert Qmu,Qkappa to Qp,Qs
@@ -86,7 +104,7 @@ def litho_to_mod96(lat, lon, outname):
     header = "%s\nlitho1.0\n0" % outname
     np.savetxt("model.temp", cps_model, header=header, comments="", fmt='%8.4f')
     subprocess.run("cat model.temp | mkmod96", shell=True)
-    subprocess.run("rm litho.temp model.temp", shell=True)
+    subprocess.run("rm litho.temp model.temp layername.temp", shell=True)
     return cps_model
 
 
