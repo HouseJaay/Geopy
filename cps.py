@@ -108,6 +108,71 @@ def litho_to_mod96(lat, lon, outname, firstrow_name='CRUST1-TOP', lastrow_name=N
     return cps_model
 
 
+def vs_to_mod96(vs, depth, outname, ratio=1.75):
+    """
+    use empirical relationship get vp and density
+    write mod96
+    :param vs: ndarray vs (km/s)
+    :param depth: ndarray depth (km)
+    :param outname: output mod96 file name
+    :param ratio: vp/vs
+    :return:
+    """
+    def density(vp):
+        """
+        density empirical function
+        ref: Tomas M.Brocher 2015 BSSA
+        """
+        return 1.6612*vp - 0.4721*vp**2 + 0.0671*vp**3 -\
+            0.0043*vp**4 + 0.000106*vp**5
+    vp = vs * ratio
+    density = density(vp)
+    qp = np.ones(len(vs)) * 1330
+    qs = np.ones(len(vs)) * 600
+    prev_depth = np.zeros(len(depth))
+    prev_depth[1:] = depth[:-1]
+    thick = depth - prev_depth
+    one = np.ones(len(vs))
+    zero = np.zeros(len(vs))
+    model_mat = np.c_[thick, vp, vs, density, qp, qs, zero, zero, one, one]
+    header = "%s\nfromvs\n0" % outname
+    np.savetxt("model.temp", model_mat, header=header, comments="", fmt='%8.4f')
+    subprocess.run("cat model.temp | mkmod96", shell=True)
+    subprocess.run("rm model.temp", shell=True)
+
+
+def write_surf96_from_anis_vs(
+        vsmean, depth, anis_strength, anis_angle, step, name, outdir):
+    """
+    write surf96 file
+    :param vsmean: a in function : a(1+dcos(2(x-e)))
+    :param depth: depth
+    :param anis_strength: d in that function
+    :param anis_angle: e in that function
+    :param step: step of azimuth
+    :param name: output file is name_azi
+    :param outdir: output directory
+    :return:
+    """
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+
+    def cos_func(x, a, d, e):
+        return a*(1 + d*np.cos(2*(x-e)*np.pi/180))
+    for azi in np.arange(-180, 181, step):
+        vs = cos_func(azi, vsmean, anis_strength, anis_angle)
+        vs_to_mod96(vs, depth, 'mod.temp')
+        freq_vel = forward_rayleigh('mod.temp').transpose()
+        freq_vel[:, 0] = 1.0 / freq_vel[:, 0]
+        freq_vel = freq_vel[(freq_vel[:, 0] >= 12) & (freq_vel[:, 0] <= 80)]
+        f = open(outdir+name+"_%.2f" % azi, 'w')
+        for row in freq_vel:
+            f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (row[0], row[2]))
+            f.write("SURF96 R C T 0 %.2f %.2f 0.001\n" % (row[0], row[1]))
+        f.close()
+    subprocess.run("rm mod.temp", shell=True)
+
+
 def forward_rayleigh(modelname):
     """
     using given model, forward compute surface wave phase velocity
