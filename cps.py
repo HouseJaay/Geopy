@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from glob import glob
+import pdb
 
 
 def do_mft(filename, wave, dist):
@@ -142,7 +143,7 @@ def vs_to_mod96(vs, depth, outname, ratio=1.75):
 
 
 def write_surf96_from_anis_vs(
-        vsmean, depth, anis_strength, anis_angle, step, name, outdir):
+        vsmean, depth, anis_strength, anis_angle, step, name, outdir, prange, is_meangv=False):
     """
     write surf96 file
     :param vsmean: a in function : a(1+dcos(2(x-e)))
@@ -152,25 +153,38 @@ def write_surf96_from_anis_vs(
     :param step: step of azimuth
     :param name: output file is name_azi
     :param outdir: output directory
+    :param is_meangv: output isotropic group vel
+    :param prange: period range of dispersion
     :return:
     """
     if not os.path.exists(outdir):
         os.mkdir(outdir)
+
+    # get mean gv
+    vs_to_mod96(vsmean, depth, 'mean.mod')
+    mean_vel = forward_rayleigh('mean.mod').transpose()[::-1]
+    mean_vel[:, 0] = 1.0 / mean_vel[:, 0]
+    gv_mean = np.interp(prange, mean_vel[:, 0], mean_vel[:, 2])
+    # pdb.set_trace()
 
     def cos_func(x, a, d, e):
         return a*(1 + d*np.cos(2*(x-e)*np.pi/180))
     for azi in np.arange(-180, 181, step):
         vs = cos_func(azi, vsmean, anis_strength, anis_angle)
         vs_to_mod96(vs, depth, 'mod.temp')
-        freq_vel = forward_rayleigh('mod.temp').transpose()
+        freq_vel = forward_rayleigh('mod.temp').transpose()[::-1]
         freq_vel[:, 0] = 1.0 / freq_vel[:, 0]
-        freq_vel = freq_vel[(freq_vel[:, 0] >= 12) & (freq_vel[:, 0] <= 80)]
+        gv = np.interp(prange, freq_vel[:, 0], freq_vel[:, 2])
+        pv = np.interp(prange, freq_vel[:, 0], freq_vel[:, 1])
         f = open(outdir+name+"_%.2f" % azi, 'w')
-        for row in freq_vel:
-            f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (row[0], row[2]))
-            f.write("SURF96 R C T 0 %.2f %.2f 0.001\n" % (row[0], row[1]))
+        for i in range(len(prange)):
+            if is_meangv:
+                f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (prange[i], gv_mean[i]))
+            else:
+                f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (prange[i], gv[i]))
+            f.write("SURF96 R C T 0 %.2f %.2f 0.001\n" % (prange[i], pv[i]))
         f.close()
-    subprocess.run("rm mod.temp", shell=True)
+    subprocess.run("rm mod.temp mean.mod", shell=True)
 
 
 def forward_rayleigh(modelname):
