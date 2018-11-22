@@ -176,15 +176,43 @@ def write_surf96_from_anis_vs(
         freq_vel[:, 0] = 1.0 / freq_vel[:, 0]
         gv = np.interp(prange, freq_vel[:, 0], freq_vel[:, 2])
         pv = np.interp(prange, freq_vel[:, 0], freq_vel[:, 1])
-        f = open(outdir+name+"_%.2f" % azi, 'w')
+        f = open(outdir+name+"_%.3f" % azi, 'w')
         for i in range(len(prange)):
             if is_meangv:
-                f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (prange[i], gv_mean[i]))
+                f.write("SURF96 R U T 0 %.2f %.2f 0.003\n" % (prange[i], gv_mean[i]))
             else:
-                f.write("SURF96 R U T 0 %.2f %.2f 0.001\n" % (prange[i], gv[i]))
+                f.write("SURF96 R U T 0 %.2f %.2f 0.003\n" % (prange[i], gv[i]))
             f.write("SURF96 R C T 0 %.2f %.2f 0.001\n" % (prange[i], pv[i]))
         f.close()
     subprocess.run("rm mod.temp mean.mod", shell=True)
+
+
+def read_anis_disp(indir, prefix, vel_type, period):
+    """
+    read azimuth dependant dispersion file
+    :param indir: disp file directory
+    :param prefix: filename pattern is prefix_azi
+    :param vel_type: 'C' or 'U' for phase or group velocity
+    :param period: period of velocity
+    :return: azi, surfv, std
+    """
+    names = glob(indir+prefix+'_*')
+    azis, surfvs, stds = [], [], []
+    for name in names:
+        azi = float(name.split('_')[-1])
+        with open(name, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                temp = line.split()
+                if temp[2] == vel_type and float(temp[5]) == period:
+                    surfv, std = float(temp[6]), float(temp[7])
+                    if not(np.isnan(surfv) or np.isnan(std)):
+                        surfvs.append(surfv)
+                        stds.append(std)
+                        azis.append(azi)
+    surfvs = [x for _, x in sorted(zip(azis, surfvs))]
+    stds = [x for _, x in sorted(zip(azis, stds))]
+    return sorted(azis), surfvs, stds
 
 
 def forward_rayleigh(modelname):
