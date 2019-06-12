@@ -36,10 +36,8 @@ def def_mail(row_pair,evt):
 
 def send_mail(text):
     msg = MIMEText(text,'plain','utf-8')
-    from_addr = "seishao@126.com"
-    #password = "xiewanlehaha"
-    password = "fuckyou250"
-    #to_addr = "xlsthsj@126.com"
+    from_addr = "*********"
+    password = "*********"
     to_addr = "breq_fast@iris.washington.edu"
     smtp_server = "smtp.126.com"
     msg['From'] = from_addr
